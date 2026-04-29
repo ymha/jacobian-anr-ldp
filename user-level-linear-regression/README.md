@@ -49,6 +49,39 @@ y_true = predict_fn(mean(z_i))                   # noiseless path (MSE baseline)
 
 `MSE(y_pred, y_true)` measures LDP-induced prediction distortion only. By construction, `NoNoise` gives exactly 0.
 
+### Evaluation protocol walk-through
+
+The evaluation proceeds in the following order:
+
+**Step 1 — Build reportable-household index per date (`prepare_data.py`)**
+
+For every (household, date) pair, a sliding window of size W is attempted. If the household has W consecutive days of data ending on the day before `date`, the window is valid and a row `(Z, date, hh_id)` is added to `Z_te`. This produces `date_to_hhs[date]` = the set of households that can report on `date` (i.e., have the required prior W days).
+
+**Step 2 — Shuffle and partition households (`eval_regression.py`)**
+
+All private households are randomly shuffled and split into `n_rounds` disjoint groups:
+```
+group_size  = ⌊n_private / n_rounds⌋
+Round r     = shuffled_hh[r * group_size : (r+1) * group_size]
+```
+Leftover households (`n_private % n_rounds`) are discarded.
+
+**Step 3 — Assign a fixed priority order within each round**
+
+Within each round `r`, households are permuted by a seeded RNG (`hh_perm`). This order determines which households are picked first on any given date.
+
+**Step 4 — Iterate dates chronologically to form batches**
+
+For each round, dates are traversed in ascending order. A date is eligible if:
+1. It is at least W days after the previously selected date (gap constraint).
+2. At least K households in the round that (a) have data on this date and (b) have not yet been used can be found in `hh_perm` order.
+
+If either condition fails the date is skipped and the candidate households remain available for future dates. When K households are found, they are marked as used and the batch is recorded. This repeats until `n_dates` batches are collected or dates are exhausted.
+
+**Step 5 — LDP evaluation per batch**
+
+Each selected batch of K households encodes its feature vector with the chosen mechanism at privacy budget ε. The server averages the encoded vectors, decodes, and predicts. MSE is computed against the noiseless prediction and accumulated across all batches and rounds.
+
 ---
 
 ## File Structure
@@ -208,6 +241,23 @@ pip install torch==2.7.1+cpu torchvision==0.22.1+cpu \
 
 # Other dependencies
 pip install -r requirements.txt
+```
+
+### Step 0 — Download data
+
+The dataset is [London Smart Meters](https://www.kaggle.com/datasets/jeanmidev/smart-meters-in-london) on Kaggle. Set up your API key first:
+
+```bash
+pip install kaggle
+# place ~/.kaggle/kaggle.json with your credentials
+# https://www.kaggle.com/docs/api#authentication
+```
+
+Then download and prepare in one command:
+
+```bash
+python download_data.py                  # download + prepare all targets
+python download_data.py --skip-download  # skip download if csv already present
 ```
 
 ### Step-by-step (single-output)
