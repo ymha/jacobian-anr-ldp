@@ -147,7 +147,7 @@ def _pu2_cap_prob(gamma: float, a: float) -> float:
 
 # ── ANR-SV shared setup ───────────────────────────────────────────────────────
 
-def _anr_sv_setup(W, features, bounds, lambda_n):
+def _anr_sv_setup(W, features, bounds, Z_pub_norm, lambda_n):
     """Shared SVD + SV-weighted λ allocation for ANR-SV variants.
 
     Returns (d, r, sv, U, sqrt_l, inv_sqrt_l, mu).
@@ -161,7 +161,7 @@ def _anr_sv_setup(W, features, bounds, lambda_n):
     r  = int(np.sum(sv_all > 1e-10 * sv_all[0]))
     U  = Vt.T
     sv = sv_all[:r]
-    mu = 0.5 * np.ones(d)
+    mu = Z_pub_norm.mean(axis=0)
 
     if np.isinf(lambda_n):
         C_row           = float(d)
@@ -291,7 +291,7 @@ def make_anr_sv(W, features, bounds, Z_pub_norm,
     Row-space budget allocated by: 1/√λ_i ∝ s_i^{2/3} (Lagrange optimum for
     min Σ s_i²·λ_i s.t. Σ 1/√λ_i = C_row).
     """
-    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, lambda_n)
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, Z_pub_norm, lambda_n)
 
     lambdas_row = (1.0 / inv_sqrt_l[:r]) ** 2
     print(f"  ANR-SV: r={r}, λ_i(row) min={lambdas_row.min():.4f} "
@@ -324,7 +324,7 @@ def make_anr_sv_linf(W, features, bounds, Z_pub_norm,
     L∞ sensitivity = 2ρ → L1 sensitivity = 2ρd → noise scale 2ρd/ε per coordinate.
     Satisfies ε-LDP.
     """
-    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, lambda_n)
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, Z_pub_norm, lambda_n)
 
     z_pub = (Z_pub_norm - mu) @ U * inv_sqrt_l
     rho   = float(np.percentile(np.abs(z_pub).max(axis=1), percentile))
@@ -352,7 +352,7 @@ def make_anr_sv_l2agm(W, features, bounds, Z_pub_norm,
     L2 sensitivity after clipping: Δ₂ = 2ρ.
     Noise: AGM (Balle & Wang 2018), σ = _agm_sigma(ε, δ, 2ρ) → (ε,δ)-LDP.
     """
-    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, lambda_n)
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, Z_pub_norm, lambda_n)
 
     z_pub = (Z_pub_norm - mu) @ U * inv_sqrt_l
     rho   = float(np.percentile(np.linalg.norm(z_pub, axis=1), percentile))
@@ -400,7 +400,7 @@ def make_anr_sv_cw(W, features, bounds, Z_pub_norm,
     Combines SV-weighted anisotropic scaling with per-coordinate budget allocation
     (λ_i^{1/3} split per [25TIFS]) applied in the transformed space.
     """
-    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, lambda_n)
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, Z_pub_norm, lambda_n)
 
     z_pub   = (Z_pub_norm - mu) @ U * inv_sqrt_l
     rho     = np.percentile(np.abs(z_pub), percentile, axis=0)
@@ -434,7 +434,7 @@ def make_anr_sv_cw_gaussian(W, features, bounds, Z_pub_norm,
     Same transform as ANR-SV-CW(Lap); noise calibrated via AGM (Balle & Wang 2018)
     with budget split minimizing Σ σ_i² per [25TIFS]. Satisfies (ε,δ)-LDP.
     """
-    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, lambda_n)
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, Z_pub_norm, lambda_n)
 
     z_pub   = (Z_pub_norm - mu) @ U * inv_sqrt_l
     rho     = np.percentile(np.abs(z_pub), percentile, axis=0)
@@ -501,7 +501,7 @@ def make_anr_sv_wrap(inner_factory, W, features, bounds, Z_pub_norm,
 
     inner_factory(z_pub: np.ndarray) -> mechanism with .encode / .decode
     """
-    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, lambda_n)
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, Z_pub_norm, lambda_n)
     z_pub = (Z_pub_norm - mu) @ U * inv_sqrt_l
     inner = inner_factory(z_pub)
 

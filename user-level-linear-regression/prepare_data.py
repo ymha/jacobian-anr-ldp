@@ -23,7 +23,7 @@ import pandas as pd
 import torch
 from numpy.lib.stride_tricks import sliding_window_view
 
-DATA_CSV      = "/home/ymha/sources/neurips_exp/data/london/daily_dataset.csv"
+DATA_CSV      = None
 OUT_BASE      = "./data/london"
 WINDOW        = 16
 SPLIT_DATE    = "2013-01-01"
@@ -118,7 +118,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--window",       type=int, default=WINDOW)
     parser.add_argument("--split_date",   type=str, default=SPLIT_DATE)
-    parser.add_argument("--data_csv",     type=str, default=DATA_CSV)
+    parser.add_argument("--data_csv",     type=str, required=True,
+                        help="path to daily_dataset.csv")
     parser.add_argument("--n_public_hh",  type=int, default=N_PUBLIC_HH,
                         help="number of households (sorted by LCLid) used as public training data")
     parser.add_argument("--target",       type=str, default=None, choices=TARGETS,
