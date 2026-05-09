@@ -120,7 +120,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--window",       type=int, default=WINDOW)
     parser.add_argument("--split_date",   type=str, default=SPLIT_DATE)
-    parser.add_argument("--data_csv",     type=str, required=True,
+    parser.add_argument("--data_csv",     type=str, default="./raw_data/daily_dataset.csv",
                         help="path to daily_dataset.csv")
     parser.add_argument("--n_public_hh",  type=int, default=N_PUBLIC_HH,
                         help="number of households used as public training data")
