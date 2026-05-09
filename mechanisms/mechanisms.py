@@ -12,7 +12,7 @@ DELTA      = 1e-5
 
 
 def _project_l1(z: np.ndarray, rho: float) -> np.ndarray:
-    """Project each row of x onto the L1 ball of radius ρ (Duchi et al. 2008)."""
+    """Project each row of z onto the L1 ball of radius ρ (Duchi et al. 2008)."""
     abs_z = np.abs(z)
     norms = abs_z.sum(axis=1)
     out   = z.copy()
