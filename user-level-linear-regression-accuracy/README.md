@@ -114,7 +114,6 @@ Each selected household encodes its feature vector with the chosen mechanism at 
 - **Feature normalization**: per-dimension min-max to `[0, 1]` using public-household train statistics.
 - **Modes**:
   - Single-output (default): one of `{energy_mean, energy_median, energy_max, energy_min, energy_std}`.
-  - Multi-output (`--multi`): `Z = energy_mean × W`, `Y = all 5 targets`.
 
 ### Regressor (`train_regressor.py`)
 
@@ -126,7 +125,6 @@ OLS with intercept via `np.linalg.lstsq`. Trained on normalized public-household
 ```
 
 - **Single-output**: `β ∈ ℝ^D`, `b ∈ ℝ`.
-- **Multi-output**: `B ∈ ℝ^{D×5}`, `intercepts ∈ ℝ^5`, task matrix `W = B.T ∈ ℝ^{5×D}`.
 
 The weight vector `β` (or matrix `W`) defines the task-sensitive direction used by ANR mechanisms.
 
@@ -247,30 +245,18 @@ python download_data.py                  # download + prepare all targets
 python download_data.py --skip-download  # skip download if csv already present
 ```
 
-### Step-by-step (single-output)
+### Step-by-step 
 
 ```bash
 # 1. Prepare data (public/private household split)
+# Default CSV: ./raw_data/daily_dataset.csv  Override with --data_csv <path>
 python prepare_data.py --window 16 --target energy_mean
 
 # 2. Train regressor on public households
 python train_regressor.py --window 16 --target energy_mean
 
 # 3. Run user-level LDP evaluation on private households
-python eval_regression.py --window 16 --target energy_mean --n_dates 20 --n_rounds 20
-```
-
-### Step-by-step (multi-output)
-
-```bash
-# 1. Prepare data
-python prepare_data.py --window 16 --multi
-
-# 2. Train regressor
-python train_regressor.py --window 16 --multi
-
-# 3. Run LDP evaluation
-python eval_regression.py --window 16 --multi --n_dates 20 --n_rounds 20
+python eval_regression.py --window 16 --target energy_mean --n_dates 130 --n_rounds 20
 ```
 
 ### Evaluate a subset of mechanisms
