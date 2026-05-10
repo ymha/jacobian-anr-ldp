@@ -15,48 +15,40 @@ import numpy as np
 
 
 def parse_result_file(path: Path) -> dict:
-    """Parse one result file. Returns nested dict:
-    {(eps_feat, eps_label, K): {mech_name: accuracy}}
-    """
+    """Parse one result file. Returns {eps_feat: {mech_name: accuracy}}."""
     results = {}
     lines = path.read_text().splitlines()
 
-    eps_feat = eps_label = None
     header = None
 
     for line in lines:
-        m = re.match(r"eps_feat=([\d.]+).*eps_label=([\d.]+)", line)
-        if m:
-            eps_feat  = float(m.group(1))
-            eps_label = float(m.group(2))
-            header    = None
+        stripped = line.strip()
+
+        # Header row starts with "eps_feat"
+        if re.match(r"eps_feat\b", stripped):
+            # Handle merged column names, e.g. "PrivUnitG(MC)+PAPrivUnitG(Paper)+PA"
+            fixed = stripped.replace("PrivUnitG(MC)+PAPrivUnitG(Paper)+PA",
+                                     "PrivUnitG(MC)+PA PrivUnitG(Paper)+PA")
+            header = fixed.split()  # ['eps_feat', 'NoNoise', ...]
             continue
 
-        if eps_feat is None:
+        if header is None or re.match(r"^-+$", stripped):
             continue
 
-        # Header row: "     K    NoNoise    PrivUnit2(Opt)+PA  ..."
-        if re.match(r"\s*K\s+\S", line):
-            header = line.split()  # ['K', 'NoNoise', ...]
+        parts = stripped.split()
+        if not parts:
             continue
 
-        if header is None or re.match(r"^-+$", line.strip()):
-            continue
-
-        parts = line.split()
-        if not parts or not parts[0].lstrip("-").isdigit():
-            continue
-
+        # Data rows: first token is a float (eps value)
         try:
-            K = int(parts[0])
+            eps = float(parts[0])
         except ValueError:
             continue
 
-        key = (eps_feat, eps_label, K)
-        results[key] = {}
+        results[eps] = {}
         for mech_name, val_str in zip(header[1:], parts[1:]):
             try:
-                results[key][mech_name] = float(val_str)
+                results[eps][mech_name] = float(val_str)
             except ValueError:
                 pass
 
@@ -68,39 +60,34 @@ def aggregate(result_dir: Path, out_path: Path | None):
     if not files:
         sys.exit(f"No result_seed*.txt files found in {result_dir}")
 
-    print(f"Found {len(files)} seed files: {[f.name for f in files]}")
+    print(f"Found {len(files)} seed files.")
 
-    # per_key[key][mech] = [acc_seed0, acc_seed1, ...]
-    per_key: dict = defaultdict(lambda: defaultdict(list))
+    # per_eps[eps][mech] = [acc_seed0, acc_seed1, ...]
+    per_eps: dict = defaultdict(lambda: defaultdict(list))
     all_mechs: list = []
 
     for f in files:
         parsed = parse_result_file(f)
-        for key, mechs in parsed.items():
+        for eps, mechs in parsed.items():
             for mech, acc in mechs.items():
-                per_key[key][mech].append(acc)
+                per_eps[eps][mech].append(acc)
                 if mech not in all_mechs:
                     all_mechs.append(mech)
 
-    col_w   = 26  # wide enough for "0.9000 ± 0.0123"
+    col_w = 22  # wide enough for "0.1234 ± 0.0056"
     lines_out = []
 
-    prev_eps = None
-    for key in sorted(per_key.keys()):
-        eps_feat, eps_label, K = key
-        if (eps_feat, eps_label) != prev_eps:
-            header_line = (
-                f"\neps_feat={eps_feat}  eps_label={eps_label}  "
-                f"seeds={len(files)}\n"
-                f"{'K':>6}  " + "".join(f"{m:>{col_w}}" for m in all_mechs) + "\n"
-                + "-" * (8 + len(all_mechs) * col_w)
-            )
-            lines_out.append(header_line)
-            prev_eps = (eps_feat, eps_label)
+    header_line = (
+        f"\nseeds={len(files)}\n"
+        f"{'eps_feat':>10}  " + "".join(f"{m:>{col_w}}" for m in all_mechs) + "\n"
+        + "-" * (12 + len(all_mechs) * col_w)
+    )
+    lines_out.append(header_line)
 
-        row = f"{K:>6}  "
+    for eps in sorted(per_eps.keys()):
+        row = f"{eps:>10.1f}  "
         for mech in all_mechs:
-            vals = per_key[key].get(mech, [])
+            vals = per_eps[eps].get(mech, [])
             if vals:
                 row += f"{np.mean(vals):.4f} ± {np.std(vals, ddof=1):.4f}".rjust(col_w)
             else:
@@ -126,3 +113,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
