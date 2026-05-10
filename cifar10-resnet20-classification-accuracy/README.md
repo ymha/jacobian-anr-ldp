@@ -25,8 +25,8 @@ For each test sample `i`:
 - Encode: `z̃_i = mech.encode(z_i, ε_feat, rng=rng_i)`
 
 **Server side:**
-- Decode: `ẑ_i = mech.decode(z̃_i)`
-- Evaluate: `clf(ẑ_i) == y_i`
+- Decode: `ẑ_i = mech.decode(z̃_i)`
+- Evaluate: `clf(ẑ_i) == y_i`
 
 **Accuracy** = fraction of test samples correctly classified after encode–decode, averaged over the full test set (`n_repeat = len(test_set) = 10,000`).
 
@@ -37,7 +37,7 @@ For each test sample `i`:
 ```
 .
 ├── train_resnet20.py               # Stage 1: train ResNet-20, extract 64-dim features, train MLP heads
-├── eval_cifar_classification.py    # Stage 2: LDP evaluation
+├── eval_cifar_classification.py    # Stage 2: LDP evaluation (main + ablation)
 ├── model.py                        # ResNet-20, FeatureClassifier, MLPClassifier definitions
 ├── ../mechanisms/mechanisms.py     # All LDP mechanism implementations
 ├── requirements.txt                # Python dependencies
@@ -87,23 +87,49 @@ For each test sample `i`:
 All mechanisms satisfy ε-LDP (pure) or (ε, δ)-LDP with `δ = 1e-5`.  
 Clipping radii `ρ` are set to the 90th percentile of the corresponding norm over `Z_tr`.
 
+### Main registry (`build_mechs`, default)
+
 | Name | Type | Description |
 |------|------|-------------|
 | `NoNoise` | — | No perturbation; upper bound on accuracy |
 | `Laplace(L1)` | ε-LDP | L1 clip to `ρ`, Laplace noise scale `2ρ/ε` |
-| `Laplace+PA` | ε-LDP | ANR-SV transform → L1 clip → Laplace |
+| `Laplace+PA` | ε-LDP | PA transform → L1 clip → Laplace |
+| `AGM` | (ε,δ)-LDP | L2 clip → Gaussian (Balle & Wang 2018) |
+| `AGM+PA` | (ε,δ)-LDP | PA transform → L2 clip → Gaussian |
 | `PrivUnit2(Opt)` | ε-LDP | Spherical step-function on `S^{d-1}` |
-| `PrivUnit2(Opt)+PA` | ε-LDP | ANR-SV transform → normalize → PrivUnit2 |
-| `PrivUnitG(MC)` | ε-LDP | Gaussian ambient-space step-function |
-| `PrivUnitG(Paper)` | ε-LDP | PrivUnitG with paper parameters |
-| `PrivUnitG(MC)+PA` | ε-LDP | ANR-SV transform → normalize → PrivUnitG(MC) |
-| `PrivUnitG(Paper)+PA` | ε-LDP | ANR-SV transform → normalize → PrivUnitG(Paper) |
-| `CW(Laplace)+PA` | ε-LDP | ANR-SV transform → coordinate-wise i.n.i.d. Laplace |
+| `PrivUnit2(Opt)+PA` | ε-LDP | PA transform → normalize → PrivUnit2 |
+| `PrivUnitG(MC)` | ε-LDP | Gaussian ambient-space step-function (MC) |
+| `PrivUnitG(Paper)` | ε-LDP | PrivUnitG with paper-exact parameters |
+| `PrivUnitG(MC)+PA` | ε-LDP | PA transform → normalize → PrivUnitG(MC) |
+| `PrivUnitG(Paper)+PA` | ε-LDP | PA transform → normalize → PrivUnitG(Paper) |
+| `CW(Laplace)+PA` | ε-LDP | PA transform → coordinate-wise i.n.i.d. Laplace |
+| `CW(AGM)+PA` | (ε,δ)-LDP | PA transform → coordinate-wise i.n.i.d. Gaussian |
 | `PLAN(Pub)` | (ε,δ)-LDP | Variance-aware scaling → L2 clip → Gaussian |
-| `PLAN(Paper)` | (ε,δ)-LDP | PLAN with paper parameters |
+| `PLAN(Paper)` | (ε,δ)-LDP | PLAN Algorithm 1 (Aumüller et al., private μ̃ and C) |
+| `Inst-Opt` | (ε,δ)-LDP | Hadamard rotation + median shift + optimal L2 clip (d must be power of 2) |
 | `Task-Aware` | ε-LDP | Cholesky whitening + water-filling noise (linear classifiers only) |
 
-### ANR-SV Transform
+### Ablation registry (`build_mechs_ablation`, `--ablation`)
+
+| Name | Ablation | Description |
+|------|----------|-------------|
+| `Laplace+PA` | full PA | Full PA pre+post processing (upper bound) |
+| `PrivUnit2(Opt)+PA` | full PA | Full PA pre+post processing (upper bound) |
+| `PrivUnitG(MC)+PA` | full PA | Full PA pre+post processing (upper bound) |
+| `Laplace(L1)` | baseline | L1 clip → Laplace (no PA transform) |
+| `Laplace+PA/NoPostProc` | NoPostProc | PA Pre-processing, identity Post-processing |
+| `PrivUnit2(Opt)+PA/NoPostProc` | NoPostProc | PA Pre-processing, identity Post-processing |
+| `PrivUnitG(MC)+PA/NoPostProc` | NoPostProc | PA Pre-processing, identity Post-processing |
+| `Laplace+PA/NoReshaping` | NoReshaping | SVD rotation only, no anisotropic scaling |
+| `PrivUnit2(Opt)/NoReshaping` | NoReshaping | SVD rotation only, no anisotropic scaling |
+| `PrivUnitG(MC)/NoReshaping` | NoReshaping | SVD rotation only, no anisotropic scaling |
+| `Laplace(L1)/NoPreProc` | NoPreProc | Raw-space encode, PA Post-processing |
+| `PrivUnit2/NoPreProc` | NoPreProc | Raw-space encode, PA Post-processing |
+| `PrivUnitG/NoPreProc` | NoPreProc | Raw-space encode, PA Post-processing |
+| `PrivUnit2(L1,Opt)` | L1Clip | L1 clip in raw space + PrivUnit2 (no PA) |
+| `PrivUnitG(L1,MC)` | L1Clip | L1 clip in raw space + PrivUnitG (no PA) |
+
+### PA (Pre/Post-processing Adaptive) Transform
 
 Rotates the latent space by the Jacobian row space of the downstream classifier so that task-sensitive directions receive proportionally less noise.
 
@@ -131,7 +157,7 @@ z_dec = (x_noisy ⊙ √λ) @ U.T + μ
 
 ## Evaluation Grid
 
-- `ε_feat ∈ {0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 7.5, 10}`
+- `ε ∈ {0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 7.5, 10}`
 - `n_repeat = len(test_set) = 10,000` (all test samples)
 
 ---
@@ -163,31 +189,53 @@ python train_resnet20.py --weights path/to/resnet20.pth
 
 # Train MLP heads (optional)
 python train_resnet20.py --mlp --activation relu
-python train_resnet20.py --mlp --activation gelu
 python train_resnet20.py --mlp --activation tanh
 python train_resnet20.py --mlp --activation sigmoid
 python train_resnet20.py --mlp --activation leaky_relu
 
-# 2. Run LDP evaluation
+# 2. Run LDP evaluation (main registry)
 python eval_cifar_classification.py
 
 # MLP classifier
 python eval_cifar_classification.py --mlp --activation relu
 
 # Subset of mechanisms
-python eval_cifar_classification.py --mechs "NoNoise" "PrivUnit2(Opt)+PA" "PrivUnit2(Opt)"
+python eval_cifar_classification.py --mechs "NoNoise" "Laplace+PA" "PrivUnit2(Opt)+PA"
+
+# 3. Run ablation study
+python eval_cifar_classification.py --ablation
+
+# Subset of ablation mechanisms
+python eval_cifar_classification.py --ablation --mechs "Laplace+PA/NoPostProc" "Laplace+PA/NoReshaping"
+
+# 4. CIFAR-10-C distribution shift evaluation
+# Download dataset (~2.8 GB)
+bash download_cifar10c.sh
+
+# Extract features for all corruptions at severity 1
+python extract_cifar10c_features.py --c10c_dir data/CIFAR10-C/CIFAR-10-C --severity 1
+
+# Extract specific corruptions
+python extract_cifar10c_features.py --c10c_dir data/CIFAR10-C/CIFAR-10-C --severity 3 \
+    --corrupt_types gaussian_noise shot_noise
+
+# Evaluate on corrupted test set
+python eval_cifar_classification.py --te_dir data/CIFAR10-C/latent/gaussian_noise_s1
+python eval_cifar_classification.py --ablation --te_dir data/CIFAR10-C/latent/gaussian_noise_s1
 
 # Save results
 python eval_cifar_classification.py > results.txt 2>&1
+python eval_cifar_classification.py --ablation > results_ablation.txt 2>&1
 ```
 
 ---
 
 ## References
 
-- **ANR-CW**: Muthukrishnan, G., & Kalyani, S. (2025). Differential Privacy With Higher Utility by Exploiting Coordinate-Wise Disparity. *IEEE TIFS*.
+- **PA (ANR-CW)**: Muthukrishnan, G., & Kalyani, S. (2025). Differential Privacy With Higher Utility by Exploiting Coordinate-Wise Disparity. *IEEE TIFS*.
 - **PLAN**: Aumüller, M., Lebeda, C. J., Nelson, B., & Pagh, R. (2024). PLAN: Variance-Aware Private Mean Estimation. *PETs*.
 - **PrivUnitG**: Asi, H., Feldman, V., & Talwar, K. (2022). Optimal Algorithms for Mean Estimation under Local Differential Privacy. *ICML*.
 - **Inst-Opt**: Huang, Z., Liang, Y., & Yi, K. (2021). Instance-optimal Mean Estimation Under Differential Privacy. *NeurIPS*.
 - **AGM**: Balle, B., & Wang, Y.-X. (2018). Improving the Gaussian Mechanism for Differential Privacy. *ICML*.
 - **PrivUnit2(Opt)**: Bhowmick, A. et al. (2018). Protection Against Reconstruction. *arXiv:1812.00984*.
+- **Task-Aware**: Cheng, X. et al. (2022). Locally Differentially Private Functional Statistics. *ICML*.

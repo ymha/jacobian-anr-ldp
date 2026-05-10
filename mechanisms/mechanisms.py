@@ -97,10 +97,10 @@ def _pu2_cap_prob(gamma: float, a: float) -> float:
     return 1.0 - float(_betainc(a, a, (1 + gamma) / 2))
 
 
-# ── ANR-SV shared setup ───────────────────────────────────────────────────────
+# ── PA shared setup ──────────────────────────────────────────────────────────
 
-def _anr_sv_setup(W, features, bounds, lambda_n, Z_pub_norm):
-    """Shared SVD + SV-weighted λ allocation for ANR-SV variants.
+def _pa_setup(W, features, bounds, lambda_n, Z_pub_norm):
+    """Shared SVD + SV-weighted λ allocation for PA (Pre/Post-processing Adaptive) variants.
 
     Returns (d, r, sv, U, sqrt_l, inv_sqrt_l, mu).
     """
@@ -192,7 +192,7 @@ class GaussianMech:
         return z_enc
 
 
-# ── ANR mechanisms ────────────────────────────────────────────────────────────
+# ── PA mechanisms ────────────────────────────────────────────────────────────
 
 def make_laplace_pa(W, features, bounds, Z_pub_norm,
                 lambda_n=LAMBDA_N, percentile=PERCENTILE):
@@ -201,10 +201,10 @@ def make_laplace_pa(W, features, bounds, Z_pub_norm,
     Row-space budget allocated by: 1/√λ_i ∝ s_i^{2/3} (Lagrange optimum for
     min Σ s_i²·λ_i s.t. Σ 1/√λ_i = C_row).
     """
-    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
 
     lambdas_row = (1.0 / inv_sqrt_l[:r]) ** 2
-    print(f"  ANR-SV: r={r}, λ_i(row) min={lambdas_row.min():.4f} "
+    print(f"  Laplace+PA: r={r}, λ_i(row) min={lambdas_row.min():.4f} "
           f"max={lambdas_row.max():.4f}  "
           f"(uniform λ_r would be "
           f"{(r / d) ** 2 if np.isinf(lambda_n) else 1.0 / ((d - (d - r) / np.sqrt(lambda_n)) / r) ** 2:.4f})")
@@ -212,7 +212,7 @@ def make_laplace_pa(W, features, bounds, Z_pub_norm,
     z_pub = (Z_pub_norm - mu) @ U * inv_sqrt_l
     rho   = float(np.percentile(np.abs(z_pub).sum(axis=1), percentile))
 
-    class _ANRSV:
+    class _LaplacePA:
         def encode(self, z: np.ndarray, epsilon: float,
                    rng: np.random.Generator = None) -> np.ndarray:
             if rng is None:
@@ -224,7 +224,7 @@ def make_laplace_pa(W, features, bounds, Z_pub_norm,
         def decode(self, z_enc: np.ndarray) -> np.ndarray:
             return (z_enc * sqrt_l) @ U.T + mu
 
-    return _ANRSV()
+    return _LaplacePA()
 
 
 def make_agm_pa(W, features, bounds, Z_pub_norm,
@@ -235,14 +235,14 @@ def make_agm_pa(W, features, bounds, Z_pub_norm,
     L2 sensitivity after clipping: Δ₂ = 2ρ.
     Noise: AGM (Balle & Wang 2018), σ = _agm_sigma(ε, δ, 2ρ) → (ε,δ)-LDP.
     """
-    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
 
     z_pub = (Z_pub_norm - mu) @ U * inv_sqrt_l
     rho   = float(np.percentile(np.linalg.norm(z_pub, axis=1), percentile))
     sens  = 2.0 * rho
     _cache: dict[float, float] = {}
 
-    class _ANRSVL2AGM:
+    class _AGMPA:
         def encode(self, z: np.ndarray, epsilon: float,
                    rng: np.random.Generator = None) -> np.ndarray:
             if rng is None:
@@ -257,14 +257,14 @@ def make_agm_pa(W, features, bounds, Z_pub_norm,
         def decode(self, z_enc: np.ndarray) -> np.ndarray:
             return (z_enc * sqrt_l) @ U.T + mu
 
-    return _ANRSVL2AGM()
+    return _AGMPA()
 
 
 def make_privunit2_opt_pa(W, features, bounds, Z_pub_norm,
                           lambda_n=LAMBDA_N, percentile=PERCENTILE):
-    """ANR-SV + PrivUnit2: SV-weighted anisotropic transform + spherical step-function.
+    """PrivUnit2(Opt)+PA: SV-weighted anisotropic PA transform + spherical step-function.
 
-    Combines ANR's row-space identification with PrivUnit2's optimal step-function.
+    Combines PA's row-space identification with PrivUnit2's optimal step-function.
     ALL d dimensions participate (including null space), so z_null is protected.
 
     Encoding:
@@ -280,14 +280,14 @@ def make_privunit2_opt_pa(W, features, bounds, Z_pub_norm,
     if np.isinf(lambda_n):
         raise ValueError("lambda_n must be finite: null space needs non-zero weight for privacy.")
 
-    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
 
     z_pub = (Z_pub_norm - mu) @ U * inv_sqrt_l
     rho   = float(np.percentile(np.linalg.norm(z_pub, axis=1), percentile))
     a     = (d - 1) / 2.0
     _cache: dict = {}
 
-    class _ANRSVPrivUnit2:
+    class _PrivUnit2PA:
         def encode(self, z: np.ndarray, epsilon: float,
                    rng: np.random.Generator = None) -> np.ndarray:
             if rng is None:
@@ -317,17 +317,17 @@ def make_privunit2_opt_pa(W, features, bounds, Z_pub_norm,
         def decode(self, z_enc: np.ndarray) -> np.ndarray:
             return (z_enc * sqrt_l) @ U.T + mu
 
-    return _ANRSVPrivUnit2()
+    return _PrivUnit2PA()
 
 
 def make_cw_laplace_pa(W, features, bounds, Z_pub_norm,
                    lambda_n=LAMBDA_N, percentile=PERCENTILE):
-    """CW(Laplace)+PA: SV-weighted ANR transform + coordinate-wise i.n.i.d. Laplace.
+    """CW(Laplace)+PA: SV-weighted PA transform + coordinate-wise i.n.i.d. Laplace.
 
     Combines SV-weighted anisotropic scaling with per-coordinate budget allocation
     (λ_i^{1/3} split per [25TIFS]) applied in the transformed space.
     """
-    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
 
     z_pub   = (Z_pub_norm - mu) @ U * inv_sqrt_l
     rho     = np.percentile(np.abs(z_pub), percentile, axis=0)
@@ -336,7 +336,7 @@ def make_cw_laplace_pa(W, features, bounds, Z_pub_norm,
     beta    = lambdas ** (1.0 / 3.0) * norm_23
     active  = beta > 0
 
-    class _ANRSVCoordWise:
+    class _CWLaplacePA:
         def encode(self, z: np.ndarray, epsilon: float,
                    rng: np.random.Generator = None) -> np.ndarray:
             if rng is None:
@@ -351,17 +351,17 @@ def make_cw_laplace_pa(W, features, bounds, Z_pub_norm,
         def decode(self, z_enc: np.ndarray) -> np.ndarray:
             return (z_enc * sqrt_l) @ U.T + mu
 
-    return _ANRSVCoordWise()
+    return _CWLaplacePA()
 
 
 def make_cw_agm_pa(W, features, bounds, Z_pub_norm,
                              lambda_n=LAMBDA_N, percentile=PERCENTILE, delta=DELTA):
-    """CW(AGM)+PA: SV-weighted ANR transform + coordinate-wise i.n.i.d. Gaussian.
+    """CW(AGM)+PA: SV-weighted PA transform + coordinate-wise i.n.i.d. Gaussian.
 
     Same transform as CW(Laplace)+PA; noise calibrated via AGM (Balle & Wang 2018)
     with budget split minimizing Σ σ_i² per [25TIFS]. Satisfies (ε,δ)-LDP.
     """
-    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
 
     z_pub   = (Z_pub_norm - mu) @ U * inv_sqrt_l
     rho     = np.percentile(np.abs(z_pub), percentile, axis=0)
@@ -370,7 +370,7 @@ def make_cw_agm_pa(W, features, bounds, Z_pub_norm,
     active  = scale_i > 0
     _cache: dict[float, float] = {}
 
-    class _ANRSVCWGaussian:
+    class _CWGaussianPA:
         def encode(self, z: np.ndarray, epsilon: float,
                    rng: np.random.Generator = None) -> np.ndarray:
             if rng is None:
@@ -388,12 +388,12 @@ def make_cw_agm_pa(W, features, bounds, Z_pub_norm,
         def decode(self, z_enc: np.ndarray) -> np.ndarray:
             return (z_enc * sqrt_l) @ U.T + mu
 
-    return _ANRSVCWGaussian()
+    return _CWGaussianPA()
 
 
 def make_privunitg_mc_pa(W, features, bounds, Z_pub_norm,
                            lambda_n=LAMBDA_N, percentile=PERCENTILE):
-    """PrivUnitG(MC)+PA: SV-weighted ANR transform + PrivUnitG step-function."""
+    """PrivUnitG(MC)+PA: SV-weighted PA transform + PrivUnitG step-function."""
     return make_pa_warp(
         lambda z: make_privunitg_mc(z, percentile),
         W, features, bounds, Z_pub_norm, lambda_n, percentile,
@@ -402,7 +402,7 @@ def make_privunitg_mc_pa(W, features, bounds, Z_pub_norm,
 
 def make_privunitg_paper_pa(W, features, bounds, Z_pub_norm,
                                  lambda_n=LAMBDA_N, percentile=PERCENTILE):
-    """PrivUnitG(Paper)+PA: SV-weighted ANR transform + paper-exact PrivUnitG."""
+    """PrivUnitG(Paper)+PA: SV-weighted PA transform + paper-exact PrivUnitG."""
     return make_pa_warp(
         lambda z: make_privunitg_paper(z, percentile),
         W, features, bounds, Z_pub_norm, lambda_n, percentile,
@@ -411,15 +411,15 @@ def make_privunitg_paper_pa(W, features, bounds, Z_pub_norm,
 
 def make_pa_warp(inner_factory, W, features, bounds, Z_pub_norm,
                      lambda_n=LAMBDA_N, percentile=PERCENTILE):
-    """ANR-SV preprocessing wrapper for any mechanism.
+    """PA preprocessing wrapper for any mechanism.
 
-    Applies the ANR-SV transform (SVD rotation + SV-weighted anisotropic scaling)
+    Applies the PA transform (SVD rotation + SV-weighted anisotropic scaling)
     as a plug-in preprocessing, then delegates encode/decode to an inner mechanism
     built on the transformed public data.
 
     inner_factory(z_pub: np.ndarray) -> mechanism with .encode / .decode
     """
-    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _anr_sv_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
     z_pub = (Z_pub_norm - mu) @ U * inv_sqrt_l
     inner = inner_factory(z_pub)
 
@@ -432,6 +432,268 @@ def make_pa_warp(inner_factory, W, features, bounds, Z_pub_norm,
             return (inner.decode(z_enc) * sqrt_l) @ U.T + mu
 
     return _Wrapped()
+
+
+# ── Ablation mechanisms ───────────────────────────────────────────────────────
+
+def make_l1clip_laplace(Z_pub_norm: np.ndarray, percentile: float = PERCENTILE):
+    """Laplace mechanism with L1 clipping at given percentile. Pure ε-LDP."""
+    rho = float(np.percentile(np.abs(Z_pub_norm).sum(axis=1), percentile))
+    return L1ClipLaplace(rho)
+
+
+def make_l1clip_privunit2(Z_pub_norm: np.ndarray, percentile: float = PERCENTILE):
+    """PrivUnit2 with L1 clipping only (no PA transform). Pure ε-LDP."""
+    rho_l1 = float(np.percentile(np.abs(Z_pub_norm).sum(axis=1), percentile))
+    inner  = make_privunit2_opt(Z_pub_norm, percentile)
+
+    class _L1ClipPrivUnit2:
+        def encode(self, z: np.ndarray, epsilon: float,
+                   rng: np.random.Generator = None) -> np.ndarray:
+            return inner.encode(_project_l1(z, rho_l1), epsilon, rng)
+
+        def decode(self, z_enc: np.ndarray) -> np.ndarray:
+            return z_enc
+
+    return _L1ClipPrivUnit2()
+
+
+def make_l1clip_privunitg(Z_pub_norm: np.ndarray, percentile: float = PERCENTILE):
+    """PrivUnitG with L1 clipping only (no PA transform). Pure ε-LDP."""
+    rho_l1 = float(np.percentile(np.abs(Z_pub_norm).sum(axis=1), percentile))
+    inner  = make_privunitg_mc(Z_pub_norm, percentile)
+
+    class _L1ClipPrivUnitG:
+        def encode(self, z: np.ndarray, epsilon: float,
+                   rng: np.random.Generator = None) -> np.ndarray:
+            return inner.encode(_project_l1(z, rho_l1), epsilon, rng)
+
+        def decode(self, z_enc: np.ndarray) -> np.ndarray:
+            return z_enc
+
+    return _L1ClipPrivUnitG()
+
+
+# ── NoPostProc ablations (PA Pre-processing, identity Post-processing) ────────
+
+def make_laplace_pa_no_post_proc(W, features, bounds, Z_pub_norm,
+                      lambda_n=LAMBDA_N, percentile=PERCENTILE):
+    """Laplace+PA without inverse transform in Post-processing (ablation)."""
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    z_pub = (Z_pub_norm - mu) @ U * inv_sqrt_l
+    rho   = float(np.percentile(np.abs(z_pub).sum(axis=1), percentile))
+
+    class _NoDecode:
+        def encode(self, z: np.ndarray, epsilon: float,
+                   rng: np.random.Generator = None) -> np.ndarray:
+            if rng is None:
+                rng = np.random.default_rng()
+            z_sc = (z - mu) @ U * inv_sqrt_l
+            z_cl = _project_l1(z_sc, rho)
+            return z_cl + rng.laplace(0, 2.0 * rho / epsilon, z_cl.shape)
+
+        def decode(self, z_enc: np.ndarray) -> np.ndarray:
+            return z_enc
+
+    return _NoDecode()
+
+
+def make_privunit2_opt_pa_no_post_proc(W, features, bounds, Z_pub_norm,
+                                lambda_n=LAMBDA_N, percentile=PERCENTILE):
+    """PrivUnit2+PA without inverse transform in Post-processing (ablation)."""
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    z_pub  = (Z_pub_norm - mu) @ U * inv_sqrt_l
+    rho_l1 = float(np.percentile(np.abs(z_pub).sum(axis=1), percentile))
+    inner  = make_privunit2_opt(z_pub, percentile)
+
+    class _NoDecode:
+        def encode(self, z: np.ndarray, epsilon: float,
+                   rng: np.random.Generator = None) -> np.ndarray:
+            x = (z - mu) @ U * inv_sqrt_l
+            return inner.encode(_project_l1(x, rho_l1), epsilon, rng)
+
+        def decode(self, z_enc: np.ndarray) -> np.ndarray:
+            return z_enc
+
+    return _NoDecode()
+
+
+def make_privunitg_mc_no_post_proc(W, features, bounds, Z_pub_norm,
+                                lambda_n=LAMBDA_N, percentile=PERCENTILE):
+    """PrivUnitG+PA without inverse transform in Post-processing (ablation)."""
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    z_pub  = (Z_pub_norm - mu) @ U * inv_sqrt_l
+    rho_l1 = float(np.percentile(np.abs(z_pub).sum(axis=1), percentile))
+    inner  = make_privunitg_mc(z_pub, percentile)
+
+    class _NoDecode:
+        def encode(self, z: np.ndarray, epsilon: float,
+                   rng: np.random.Generator = None) -> np.ndarray:
+            x = (z - mu) @ U * inv_sqrt_l
+            return inner.encode(_project_l1(x, rho_l1), epsilon, rng)
+
+        def decode(self, z_enc: np.ndarray) -> np.ndarray:
+            return z_enc
+
+    return _NoDecode()
+
+
+# ── NoReshaping ablations (SVD rotation only, no anisotropic scaling) ─────────
+
+def make_laplace_no_reshaping(W, features, bounds, Z_pub_norm,
+                         lambda_n=LAMBDA_N, percentile=PERCENTILE):
+    """Laplace+PA rotation only, no anisotropic scaling (ablation)."""
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    z_pub = (Z_pub_norm - mu) @ U
+    rho   = float(np.percentile(np.abs(z_pub).sum(axis=1), percentile))
+
+    class _NoReshaping:
+        def encode(self, z: np.ndarray, epsilon: float,
+                   rng: np.random.Generator = None) -> np.ndarray:
+            if rng is None:
+                rng = np.random.default_rng()
+            x_rot = (z - mu) @ U
+            z_cl  = _project_l1(x_rot, rho)
+            return z_cl + rng.laplace(0, 2.0 * rho / epsilon, z_cl.shape)
+
+        def decode(self, z_enc: np.ndarray) -> np.ndarray:
+            return z_enc @ U.T + mu
+
+    return _NoReshaping()
+
+
+def make_privunit2_opt_pa_no_reshaping(W, features, bounds, Z_pub_norm,
+                                   lambda_n=LAMBDA_N, percentile=PERCENTILE):
+    """PrivUnit2+PA rotation only, no anisotropic scaling (ablation)."""
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    z_pub = (Z_pub_norm - mu) @ U
+    inner = make_privunit2_opt(z_pub, percentile)
+
+    class _NoReshaping:
+        def encode(self, z: np.ndarray, epsilon: float,
+                   rng: np.random.Generator = None) -> np.ndarray:
+            return inner.encode((z - mu) @ U, epsilon, rng)
+
+        def decode(self, z_enc: np.ndarray) -> np.ndarray:
+            return inner.decode(z_enc) @ U.T + mu
+
+    return _NoReshaping()
+
+
+def make_privunitg_mc_pa_no_reshaping(W, features, bounds, Z_pub_norm,
+                                   lambda_n=LAMBDA_N, percentile=PERCENTILE):
+    """PrivUnitG+PA rotation only, no anisotropic scaling (ablation)."""
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    z_pub = (Z_pub_norm - mu) @ U
+    inner = make_privunitg_mc(z_pub, percentile)
+
+    class _NoReshaping:
+        def encode(self, z: np.ndarray, epsilon: float,
+                   rng: np.random.Generator = None) -> np.ndarray:
+            return inner.encode((z - mu) @ U, epsilon, rng)
+
+        def decode(self, z_enc: np.ndarray) -> np.ndarray:
+            return inner.decode(z_enc) @ U.T + mu
+
+    return _NoReshaping()
+
+
+# ── NoPreProc ablations (raw-space encode, PA Post-processing) ────────────────
+
+def make_l1clip_laplace_pa_no_pre_proc(W, features, bounds, Z_pub_norm,
+                                  lambda_n=LAMBDA_N, percentile=PERCENTILE):
+    """L1Clip+Laplace in raw space, decode applies PA inverse transform (ablation)."""
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    rho = float(np.percentile(np.abs(Z_pub_norm).sum(axis=1), percentile))
+
+    class _NoPreProc:
+        def encode(self, z: np.ndarray, epsilon: float,
+                   rng: np.random.Generator = None) -> np.ndarray:
+            if rng is None:
+                rng = np.random.default_rng()
+            z_cl = _project_l1(z, rho)
+            return z_cl + rng.laplace(0, 2.0 * rho / epsilon, z_cl.shape)
+
+        def decode(self, z_enc: np.ndarray) -> np.ndarray:
+            return (z_enc * sqrt_l) @ U.T + mu
+
+    return _NoPreProc()
+
+
+def make_l1clip_privunit2_pa_no_pre_proc(W, features, bounds, Z_pub_norm,
+                                    lambda_n=LAMBDA_N, percentile=PERCENTILE):
+    """L1Clip+PrivUnit2 in raw space, decode applies PA inverse transform (ablation)."""
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    inner = make_l1clip_privunit2(Z_pub_norm, percentile)
+
+    class _NoPreProc:
+        def encode(self, z: np.ndarray, epsilon: float,
+                   rng: np.random.Generator = None) -> np.ndarray:
+            return inner.encode(z, epsilon, rng)
+
+        def decode(self, z_enc: np.ndarray) -> np.ndarray:
+            return (z_enc * sqrt_l) @ U.T + mu
+
+    return _NoPreProc()
+
+
+def make_l1clip_privunitg_pa_no_pre_proc(W, features, bounds, Z_pub_norm,
+                                    lambda_n=LAMBDA_N, percentile=PERCENTILE):
+    """L1Clip+PrivUnitG in raw space, decode applies PA inverse transform (ablation)."""
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    inner = make_l1clip_privunitg(Z_pub_norm, percentile)
+
+    class _NoPreProc:
+        def encode(self, z: np.ndarray, epsilon: float,
+                   rng: np.random.Generator = None) -> np.ndarray:
+            return inner.encode(z, epsilon, rng)
+
+        def decode(self, z_enc: np.ndarray) -> np.ndarray:
+            return (z_enc * sqrt_l) @ U.T + mu
+
+    return _NoPreProc()
+
+
+# ── L1 clipping geometry before spherical mechanisms ─────────────────────────
+
+def make_pa_l1clip_privunit2(W, features, bounds, Z_pub_norm,
+                             lambda_n=LAMBDA_N, percentile=PERCENTILE):
+    """PA transform + L1 clip in transformed space + PrivUnit2."""
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    z_pub  = (Z_pub_norm - mu) @ U * inv_sqrt_l
+    rho_l1 = float(np.percentile(np.abs(z_pub).sum(axis=1), percentile))
+    inner  = make_privunit2_opt(z_pub, percentile)
+
+    class _L1Clip:
+        def encode(self, z: np.ndarray, epsilon: float,
+                   rng: np.random.Generator = None) -> np.ndarray:
+            x = (z - mu) @ U * inv_sqrt_l
+            return inner.encode(_project_l1(x, rho_l1), epsilon, rng)
+
+        def decode(self, z_enc: np.ndarray) -> np.ndarray:
+            return (inner.decode(z_enc) * sqrt_l) @ U.T + mu
+
+    return _L1Clip()
+
+
+def make_pa_l1clip_privunitg(W, features, bounds, Z_pub_norm,
+                             lambda_n=LAMBDA_N, percentile=PERCENTILE):
+    """PA transform + L1 clip in transformed space + PrivUnitG."""
+    d, r, sv, U, sqrt_l, inv_sqrt_l, mu = _pa_setup(W, features, bounds, lambda_n, Z_pub_norm)
+    z_pub  = (Z_pub_norm - mu) @ U * inv_sqrt_l
+    rho_l1 = float(np.percentile(np.abs(z_pub).sum(axis=1), percentile))
+    inner  = make_privunitg_mc(z_pub, percentile)
+
+    class _L1Clip:
+        def encode(self, z: np.ndarray, epsilon: float,
+                   rng: np.random.Generator = None) -> np.ndarray:
+            x = (z - mu) @ U * inv_sqrt_l
+            return inner.encode(_project_l1(x, rho_l1), epsilon, rng)
+
+        def decode(self, z_enc: np.ndarray) -> np.ndarray:
+            return (inner.decode(z_enc) * sqrt_l) @ U.T + mu
+
+    return _L1Clip()
 
 
 # ── Gaussian preprocessing mechanisms ────────────────────────────────────────
@@ -1005,3 +1267,47 @@ def build_mechs(dim: int, W: np.ndarray, Z_np: np.ndarray) -> dict:
     if (dim & (dim - 1)) == 0:
         mechs["Inst-Opt"] = make_inst_opt(Z_np, delta=DELTA)
     return mechs
+
+
+def build_mechs_ablation(dim: int, W: np.ndarray, Z_np: np.ndarray) -> dict:
+    """Ablation-study LDP mechanism dict.
+
+      • NoPostProc:   full PA Pre-processing, identity Post-processing
+      • NoReshaping:  SVD rotation only, no anisotropic scaling
+      • NoPreProc:    raw-space encode, full PA Post-processing
+      • L1 clip:      L1 clipping geometry before spherical mechanisms
+    """
+    features = [str(j) for j in range(dim)]
+    bounds   = {str(j): (0.0, 1.0) for j in range(dim)}
+    anr_kw   = dict(W=W, features=features,
+                    bounds=bounds,
+                    Z_pub_norm=Z_np, lambda_n=LAMBDA_N, percentile=PERCENTILE)
+
+    rho_l1 = float(np.percentile(np.abs(Z_np).sum(axis=1), PERCENTILE))
+
+    return {
+        # ── Full PA (baseline upper) ──
+        "Laplace+PA":                   make_laplace_pa(**anr_kw),
+        "PrivUnit2(Opt)+PA":            make_privunit2_opt_pa(**anr_kw),
+        "PrivUnitG(MC)+PA":             make_privunitg_mc_pa(**anr_kw),
+
+        # ── L1 clipping geometry ──
+        "Laplace(L1)":                  L1ClipLaplace(rho_l1),
+        "PrivUnit2(L1,Opt)":            make_l1clip_privunit2(Z_np, PERCENTILE),
+        "PrivUnitG(L1,MC)":             make_l1clip_privunitg(Z_np, PERCENTILE),
+
+        # ── NoPreProc ablations ──
+        "Laplace(L1)/NoPreProc":        make_l1clip_laplace_pa_no_pre_proc(**anr_kw),
+        "PrivUnit2/NoPreProc":          make_l1clip_privunit2_pa_no_pre_proc(**anr_kw),
+        "PrivUnitG/NoPreProc":          make_l1clip_privunitg_pa_no_pre_proc(**anr_kw),
+
+        # ── NoPostProc ablations ──
+        "Laplace+PA/NoPostProc":        make_laplace_pa_no_post_proc(**anr_kw),
+        "PrivUnit2(Opt)+PA/NoPostProc": make_privunit2_opt_pa_no_post_proc(**anr_kw),
+        "PrivUnitG(MC)+PA/NoPostProc":  make_privunitg_mc_no_post_proc(**anr_kw),
+
+        # ── NoReshaping ablations ──
+        "Laplace+PA/NoReshaping":        make_laplace_no_reshaping(**anr_kw),
+        "PrivUnit2(Opt)/NoReshaping":    make_privunit2_opt_pa_no_reshaping(**anr_kw),
+        "PrivUnitG(MC)/NoReshaping":     make_privunitg_mc_pa_no_reshaping(**anr_kw),
+    }
