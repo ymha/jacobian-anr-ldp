@@ -26,7 +26,7 @@ mkdir -p "$OUT_DIR"
 for seed in $SEEDS; do
     out="$OUT_DIR/result_seed${seed}.txt"
     echo "=== seed=${seed} → ${out} ==="
-    python eval_cifar_classification.py --seed "$seed" --mlp --activation relu --n_repeat 10000 "${EXTRA_ARGS[@]}" | tee "$out"
+    python eval_cifar_classification.py --seed "$seed" --mlp --activation relu "${EXTRA_ARGS[@]}" | tee "$out"
 done
 
 echo ""
