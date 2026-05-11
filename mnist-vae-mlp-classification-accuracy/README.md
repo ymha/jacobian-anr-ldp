@@ -198,21 +198,12 @@ python eval_mlp_classification.py --dim 16 --mechs "NoNoise" "PrivUnit2(Opt)+PA"
 ---
 
 ## References
-
-- **ANR-CW (coordinate-wise i.n.i.d. noise)**: Muthukrishnan, G., & Kalyani, S. (2025). Differential Privacy With Higher Utility by Exploiting Coordinate-Wise Disparity: Laplace Mechanism Can Beat Gaussian in High Dimensions. *IEEE Transactions on Information Forensics and Security*.
-
-- **PLAN**: Aumüller, M., Lebeda, C. J., Nelson, B., & Pagh, R. (2024). PLAN: Variance-Aware Private Mean Estimation. *Proceedings on Privacy Enhancing Technologies*.
-
-- **PrivUnitG(MC)**: Asi, H., Feldman, V., & Talwar, K. (2022). Optimal Algorithms for Mean Estimation under Local Differential Privacy. *ICML 2022*.
-
-- **Inst-Opt**: Huang, Z., Liang, Y., & Yi, K. (2021). Instance-optimal Mean Estimation Under Differential Privacy. *NeurIPS 2021*.
-
-- **Piecewise**: Wang, S., Huang, Z., Nie, T., Hu, Q., Wang, Y., & Skoglund, M. (2019). Local Differential Privacy for Data Collection and Analysis. *arXiv:1906.01777*.
-
-- **AGM**: Balle, B., & Wang, Y.-X. (2018). Improving the Gaussian Mechanism for Differential Privacy: Analytical Calibration and Optimal Denoising. *ICML 2018*.
-
-- **PrivUnit2(Opt)**: Bhowmick, A., Duchi, J., Freudiger, J., Kapoor, G., & Rogers, R. (2018). Protection Against Reconstruction and Its Applications in Private Federated Learning. *arXiv:1812.00984*. Optimal parameters from Asi, H., Feldman, V., & Talwar, K. (2022). Optimal Algorithms for Mean Estimation under Local Differential Privacy. *ICML 2022*.
-
-- **Harmony**: Nguyen, T. T., Xiao, X., Yang, Y., Hui, S. C., Shin, H., & Shin, J. (2016). Collecting and Analyzing Data from Smart Device Users with Local Differential Privacy. *arXiv:1606.05053*.
-
-- **Duchi**: Duchi, J., Jordan, M. I., & Wainwright, M. J. (2013). Local Privacy and Statistical Minimax Rates. *FOCS 2013*.
+- **PA**: Ha, Y., Schlegel, V., Sun, Y., & Bharath, A. A. (2026). Jacobian-Guided Anisotropic Noise Reshaping for Utility Enhancement Under Local Differential Privacy. *arXiv*.
+- **CW**: Muthukrishnan, G., & Kalyani, S. (2025). Differential Privacy With Higher Utility by Exploiting Coordinate-Wise Disparity. *IEEE TIFS*.
+- **PLAN**: Aumüller, M., Lebeda, C. J., Nelson, B., & Pagh, R. (2024). PLAN: Variance-Aware Private Mean Estimation. *PETs*.
+- **PrivUnitG**: Asi, H., Feldman, V., & Talwar, K. (2022). Optimal Algorithms for Mean Estimation under Local Differential Privacy. *ICML*.
+- **Inst-Opt**: Huang, Z., Liang, Y., & Yi, K. (2021). Instance-optimal Mean Estimation Under Differential Privacy. *NeurIPS*.
+- **AGM**: Balle, B., & Wang, Y.-X. (2018). Improving the Gaussian Mechanism for Differential Privacy. *ICML*.
+- **PrivUnit2**: Bhowmick, A. et al. (2018). Protection Against Reconstruction. *arXiv:1812.00984*.
+- **Task-Aware**: Cheng, X. et al. (2022). Locally Differentially Private Functional Statistics. *ICML*.
+- **Duchi**: Duchi, J., Jordan, M. I., & Wainwright, M. J. (2013). Local Privacy and Statistical Minimax Rates. *FOCS*.
