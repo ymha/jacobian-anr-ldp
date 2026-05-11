@@ -138,36 +138,31 @@ Predictions are always in original energy units (kWh). `predict_fn_denorm` inver
 
 ---
 
-## LDP Mechanisms
+## LDP Mechanisms (`mechanisms/mechanisms.py`)
 
-All mechanisms satisfy ε-LDP (pure) or (ε, δ)-LDP with `δ = 1e-5`.  
-Clipping radii `ρ` are set to the 90th percentile of the corresponding norm over `Z_tr`.
+All mechanisms satisfy ε-LDP (pure) or (ε, δ)-LDP with δ = 1e-5. Clipping radii ρ are set to the 90th percentile of the corresponding norm over the public training set.
 
 | Name | Type | Description |
 |------|------|-------------|
-| `NoNoise` | — | No perturbation |
-| `Laplace(L1)` | ε-LDP | L1 clip to `ρ`, Laplace noise scale `2ρ/ε` |
-| `AGM` | (ε,δ)-LDP | L2 clip to `ρ`, AGM noise (Balle & Wang 2018) |
-| `Laplace+PA` | ε-LDP | ANR-SV transform → L1 clip → Laplace |
-| `AGM+PA` | (ε,δ)-LDP | ANR-SV transform → L2 clip → AGM noise |
-| `PrivUnit2(Opt)+PA` | ε-LDP | ANR-SV transform → normalize to `S^{d-1}` → PrivUnit2 |
-| `PrivUnitG(MC)+PA` | ε-LDP | ANR-SV transform → normalize to `S^{d-1}` → PrivUnitG |
-| `PrivUnitG(Paper)+PA` | ε-LDP | ANR-SV transform → PrivUnitG (paper-exact) |
-| `CW(Laplace)+PA` | ε-LDP | ANR-SV transform → coordinate-wise i.n.i.d. Laplace, budget split `∝ λ_i^{1/3}` |
-| `CW(AGM)+PA` | (ε,δ)-LDP | ANR-SV transform → coordinate-wise i.n.i.d. Gaussian |
-| `PLAN(Pub)` | (ε,δ)-LDP | Variance-aware scaling → L2 clip → Gaussian noise |
-| `PLAN(Paper)` | (ε,δ)-LDP | PLAN algorithm (Aumüller et al. 2024), exact implementation |
-| `Inst-Opt` | (ε,δ)-LDP | Hadamard rotation → per-dim median shift → AGM noise |
-| `PrivUnit2(Opt)` | ε-LDP | Optimal spherical step-function on `S^{d-1}` |
-| `PrivUnitG(MC)` | ε-LDP | Gaussian ambient-space step-function |
-| `PrivUnitG(Paper)` | ε-LDP | PrivUnitG paper-exact (no sphere normalization) |
-| `Task-Aware` | ε-LDP | Cholesky whitening → task-relevant rotation → water-filling → Laplace |
+| `NoNoise` | — | No perturbation; upper bound |
+| `Laplace(L1)` | ε-LDP | L1 clip + Laplace noise |
+| `AGM` | (ε,δ)-LDP | L2 clip + Gaussian (Balle & Wang 2018) |
+| `PrivUnit2(Opt)` | ε-LDP | Spherical step-function on S^{d-1} |
+| `PrivUnitG(MC)` | ε-LDP | Gaussian ambient-space step-function (MC) |
+| `PrivUnitG(Paper)` | ε-LDP | PrivUnitG with paper-exact parameters |
+| `CW(Laplace)+PA` | ε-LDP | PA + coordinate-wise i.n.i.d. Laplace |
+| `CW(AGM)+PA` | (ε,δ)-LDP | PA + coordinate-wise i.n.i.d. Gaussian |
+| `PLAN(Pub)` | (ε,δ)-LDP | Variance-aware scaling + Gaussian |
+| `PLAN(Paper)` | (ε,δ)-LDP | PLAN Algorithm 1 (Aumüller et al. 2024) |
+| `Inst-Opt` | (ε,δ)-LDP | Hadamard rotation + median shift + optimal L2 clip |
+| `Task-Aware` | ε-LDP | Cholesky whitening + water-filling (linear downstream models only) |
+| `*+PA` | same | Any mechanism above with PA anisotropic pre/post-processing |
 
-### PA's ANR
+### PA Transform
 
-**ANR** (Anisotropic Noise Reshaping) rotates the feature space so that task-sensitive directions receive proportionally less noise.
-
-In this linear regression setting, the **task-relevant subspace** is the regressor weight vector `β` (single-output, passed as `W = β.reshape(1, -1)`) or the full task matrix `W = B.T` (multi-output).
+**Row-space extraction** (`compute_jacobian_row_space`):
+- Stack per-sample Jacobians `J_i ∈ ℝ^{K×D}` into `B ∈ ℝ^{(n·K)×D}`.
+- SVD with gap-based rank threshold → `W_eff ∈ ℝ^{r×D}` (effective rank `r`).
 
 **SV-weighted λ allocation** (Lagrange optimum for `min Σ s_i² λ_i` s.t. `Σ 1/√λ_i = C`):
 ```
@@ -175,11 +170,12 @@ In this linear regression setting, the **task-relevant subspace** is the regress
 1/√λ_i = 1/√λ_N      (null space, i = r+1…d,  λ_N = 1000)
 ```
 
-**Encode / Decode**:
+**ANR** (Anisotropic Noise Reshaping) rotates the representation space by the Jacobian row space of the downstream task model so that task-sensitive directions receive proportionally less noise.
+
 ```
-x     = (z − μ) @ U ⊙ (1/√λ)          # anisotropic scaling
-[add noise in x-space]
-z_dec = (x_noisy ⊙ √λ) @ U.T + μ      # invert scaling
+Pre-process  (Encode):  \bar{z}     =  clip( (z − μ) @ U ⊙ (1/√λ) )
+         [add noise in \bar{Z}-space]
+Post-process (Decode):  z_dec = (\bar{z}_noisy ⊙ √λ) @ U.T + μ
 ```
 
 ---

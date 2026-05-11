@@ -78,41 +78,29 @@ The first hidden width (10) bounds the Jacobian row space to rank ≤ 10, which 
 
 ---
 
-## LDP Mechanisms
+## LDP Mechanisms (`mechanisms/mechanisms.py`)
 
-All mechanisms satisfy ε-LDP (pure) or (ε, δ)-LDP with `δ = 1e-5`.  
-Clipping radii `ρ` are set to the 90th percentile of the corresponding norm over the public training set `Z_tr`.
-
-> **Note on `Laplace(L∞)`**: L∞ clipping constrains each coordinate to `[-ρ, ρ]`, giving a joint L1 sensitivity of `2ρd`. The noise scale is therefore `2ρd/ε` per coordinate to satisfy ε-LDP for the full vector — the same sensitivity accounting used by `ANR-SV(L∞,Lap)`.
+All mechanisms satisfy ε-LDP (pure) or (ε, δ)-LDP with δ = 1e-5. Clipping radii ρ are set to the 90th percentile of the corresponding norm over the public training set.
 
 | Name | Type | Description |
 |------|------|-------------|
-| `NoNoise` | — | No perturbation; upper bound on accuracy |
-| `Laplace(L1)` | ε-LDP | L1 clip to `ρ`, Laplace noise scale `2ρ/ε` (L1 sensitivity = `2ρ`) |
-| `Laplace(L∞)` | ε-LDP | L∞ clip to `ρ`, Laplace noise `2ρd/ε` per coordinate (L1 sensitivity = `2ρd`) |
-| `AGM` | (ε,δ)-LDP | L2 clip to `ρ`, AGM noise `σ = _agm_sigma(ε, δ, 2ρ)` (Balle & Wang 2018) |
-| `Duchi` | ε-LDP | L∞ clip → scale to `[-1,1]` → Duchi mechanism (Duchi et al. 2013) |
-| `Harmony` | ε-LDP | Per-dim min-max normalization to `[0,1]` → Harmony (Nguyen et al. 2016) |
-| `Piecewise` | ε-LDP | L∞ clip → scale to `[-1,1]` → Piecewise mechanism (Wang et al. 2019) |
-| `Laplace+PA` | ε-LDP | ANR-SV transform → L1 clip → Laplace |
-| `ANR-SV(L∞,Lap)` | ε-LDP | ANR-SV transform → L∞ clip → Laplace (L1 sensitivity = `2ρd`) |
-| `AGM+PA` | (ε,δ)-LDP | ANR-SV transform → L2 clip → AGM noise |
-| `ANR-SV+Duchi` | ε-LDP | ANR-SV transform → L∞ clip → Duchi in transformed space |
-| `ANR-SV+Harmony` | ε-LDP | ANR-SV transform → per-dim min-max normalization to `[0,1]` → Harmony in transformed space |
-| `ANR-SV+Piecewise` | ε-LDP | ANR-SV transform → L∞ clip → Piecewise in transformed space |
-| `PrivUnit2(Opt)+PA` | ε-LDP | ANR-SV transform → normalize to `S^{d-1}` → PrivUnit2 step-function |
-| `PrivUnitG(MC)+PA` | ε-LDP | ANR-SV transform → normalize to `S^{d-1}` → PrivUnitG step-function |
-| `CW(Laplace)+PA` | ε-LDP | ANR-SV transform → coordinate-wise i.n.i.d. Laplace, budget split `∝ λ_i^{1/3}` [Muthukrishnan & Kalyani, TIFS 2025] |
-| `CW(AGM)+PA` | (ε,δ)-LDP | ANR-SV transform → coordinate-wise i.n.i.d. Gaussian, budget split minimizing `Σ σ_i²` [Muthukrishnan & Kalyani, TIFS 2025] |
-| `PLAN` | (ε,δ)-LDP | Variance-aware scaling → L2 clip → classical Gaussian noise [Aumüller et al., PETs 2024] |
-| `Inst-Opt` | (ε,δ)-LDP | Hadamard rotation → per-dim median shift → optimal-C L2 clip → AGM noise [Huang et al., NeurIPS 2021] |
-| `PrivUnit2(Opt)` | ε-LDP | Spherical step-function on `S^{d-1}` (Bhowmick et al. 2018; Asi et al. 2022) |
-| `PrivUnitG(MC)` | ε-LDP | Gaussian ambient-space step-function (Asi et al., ICML 2022) |
-| ~~`Task-Aware`~~ | — | Excluded from `eval_mlp_classification.py`: assumes a linear classifier; not applicable to MLP |
+| `NoNoise` | — | No perturbation; upper bound |
+| `Laplace(L1)` | ε-LDP | L1 clip + Laplace noise |
+| `AGM` | (ε,δ)-LDP | L2 clip + Gaussian (Balle & Wang 2018) |
+| `PrivUnit2(Opt)` | ε-LDP | Spherical step-function on S^{d-1} |
+| `PrivUnitG(MC)` | ε-LDP | Gaussian ambient-space step-function (MC) |
+| `PrivUnitG(Paper)` | ε-LDP | PrivUnitG with paper-exact parameters |
+| `CW(Laplace)+PA` | ε-LDP | PA + coordinate-wise i.n.i.d. Laplace |
+| `CW(AGM)+PA` | (ε,δ)-LDP | PA + coordinate-wise i.n.i.d. Gaussian |
+| `PLAN(Pub)` | (ε,δ)-LDP | Variance-aware scaling + Gaussian |
+| `PLAN(Paper)` | (ε,δ)-LDP | PLAN Algorithm 1 (Aumüller et al. 2024) |
+| `Inst-Opt` | (ε,δ)-LDP | Hadamard rotation + median shift + optimal L2 clip |
+| `Task-Aware` | ε-LDP | Cholesky whitening + water-filling (linear downstream models only) |
+| `*+PA` | same | Any mechanism above with PA anisotropic pre/post-processing |
 
-### ANR-SV Transform
 
-**ANR** (Anisotropic Noise Reshaping) rotates the latent space by the Jacobian row space of the downstream classifier so that task-sensitive directions receive proportionally less noise.
+### PA Transform
+
 
 **Row-space extraction** (`compute_jacobian_row_space`):
 - Stack per-sample Jacobians `J_i ∈ ℝ^{K×D}` into `B ∈ ℝ^{(n·K)×D}`.
@@ -124,11 +112,12 @@ Clipping radii `ρ` are set to the 90th percentile of the corresponding norm ove
 1/√λ_i = 1/√λ_N      (null space, i = r+1…d,  λ_N = 1000)
 ```
 
-**Encode / Decode**:
+**ANR** (Anisotropic Noise Reshaping) rotates the representation space by the Jacobian row space of the downstream task model so that task-sensitive directions receive proportionally less noise.
+
 ```
-x     = (z − μ) @ U ⊙ (1/√λ)          # anisotropic scaling into row space
-[add noise in x-space]
-z_dec = (x_noisy ⊙ √λ) @ U.T + μ      # invert scaling and rotation
+Pre-process  (Encode):  \bar{z}     =  clip( (z − μ) @ U ⊙ (1/√λ) )
+         [add noise in \bar{Z}-space]
+Post-process (Decode):  z_dec = (\bar{z}_noisy ⊙ √λ) @ U.T + μ
 ```
 
 ---

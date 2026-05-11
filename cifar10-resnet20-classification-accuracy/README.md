@@ -75,7 +75,7 @@ For each test sample `i`:
 | Layer 1 | Linear 64 → 10 |
 | Layer 2 | Linear 10 → 32 |
 | Layer 3 | Linear 32 → 10 (logits) |
-| Activation | relu / sigmoid / tanh / leaky_relu / gelu (after layers 1 and 2) |
+| Activation | relu / gelu / sigmoid / tanh / leaky_relu (after layers 1 and 2) |
 | Dropout | 0.3 after each activation |
 
 > `Task-Aware` is automatically removed from the mechanism set when `--mlp` is used.
@@ -87,27 +87,25 @@ For each test sample `i`:
 All mechanisms satisfy ε-LDP (pure) or (ε, δ)-LDP with `δ = 1e-5`.  
 Clipping radii `ρ` are set to the 90th percentile of the corresponding norm over `Z_tr`.
 
-### Main registry (`build_mechs`, default)
+## LDP Mechanisms (`mechanisms/mechanisms.py`)
+
+All mechanisms satisfy ε-LDP (pure) or (ε, δ)-LDP with δ = 1e-5. Clipping radii ρ are set to the 90th percentile of the corresponding norm over the public training set.
 
 | Name | Type | Description |
 |------|------|-------------|
-| `NoNoise` | — | No perturbation; upper bound on accuracy |
-| `Laplace(L1)` | ε-LDP | L1 clip to `ρ`, Laplace noise scale `2ρ/ε` |
-| `Laplace+PA` | ε-LDP | PA transform → L1 clip → Laplace |
-| `AGM` | (ε,δ)-LDP | L2 clip → Gaussian (Balle & Wang 2018) |
-| `AGM+PA` | (ε,δ)-LDP | PA transform → L2 clip → Gaussian |
-| `PrivUnit2(Opt)` | ε-LDP | Spherical step-function on `S^{d-1}` |
-| `PrivUnit2(Opt)+PA` | ε-LDP | PA transform → normalize → PrivUnit2 |
+| `NoNoise` | — | No perturbation; upper bound |
+| `Laplace(L1)` | ε-LDP | L1 clip + Laplace noise |
+| `AGM` | (ε,δ)-LDP | L2 clip + Gaussian (Balle & Wang 2018) |
+| `PrivUnit2(Opt)` | ε-LDP | Spherical step-function on S^{d-1} |
 | `PrivUnitG(MC)` | ε-LDP | Gaussian ambient-space step-function (MC) |
 | `PrivUnitG(Paper)` | ε-LDP | PrivUnitG with paper-exact parameters |
-| `PrivUnitG(MC)+PA` | ε-LDP | PA transform → normalize → PrivUnitG(MC) |
-| `PrivUnitG(Paper)+PA` | ε-LDP | PA transform → normalize → PrivUnitG(Paper) |
-| `CW(Laplace)+PA` | ε-LDP | PA transform → coordinate-wise i.n.i.d. Laplace |
-| `CW(AGM)+PA` | (ε,δ)-LDP | PA transform → coordinate-wise i.n.i.d. Gaussian |
-| `PLAN(Pub)` | (ε,δ)-LDP | Variance-aware scaling → L2 clip → Gaussian |
-| `PLAN(Paper)` | (ε,δ)-LDP | PLAN Algorithm 1 (Aumüller et al., private μ̃ and C) |
-| `Inst-Opt` | (ε,δ)-LDP | Hadamard rotation + median shift + optimal L2 clip (d must be power of 2) |
-| `Task-Aware` | ε-LDP | Cholesky whitening + water-filling noise (linear classifiers only) |
+| `CW(Laplace)+PA` | ε-LDP | PA + coordinate-wise i.n.i.d. Laplace |
+| `CW(AGM)+PA` | (ε,δ)-LDP | PA + coordinate-wise i.n.i.d. Gaussian |
+| `PLAN(Pub)` | (ε,δ)-LDP | Variance-aware scaling + Gaussian |
+| `PLAN(Paper)` | (ε,δ)-LDP | PLAN Algorithm 1 (Aumüller et al. 2024) |
+| `Inst-Opt` | (ε,δ)-LDP | Hadamard rotation + median shift + optimal L2 clip |
+| `Task-Aware` | ε-LDP | Cholesky whitening + water-filling (linear downstream models only) |
+| `*+PA` | same | Any mechanism above with PA anisotropic pre/post-processing |
 
 ### Ablation registry (`build_mechs_ablation`, `--ablation`)
 
@@ -129,18 +127,24 @@ Clipping radii `ρ` are set to the 90th percentile of the corresponding norm ove
 | `PrivUnit2(L1,Opt)` | L1Clip | L1 clip in raw space + PrivUnit2 (no PA) |
 | `PrivUnitG(L1,MC)` | L1Clip | L1 clip in raw space + PrivUnitG (no PA) |
 
-### PA (Pre/Post-processing Adaptive) Transform
-
-Rotates the latent space by the Jacobian row space of the downstream classifier so that task-sensitive directions receive proportionally less noise.
+### PA Transform
 
 **Row-space extraction** (`compute_jacobian_row_space`):
-- Stack per-sample Jacobians into `B ∈ ℝ^{(n·K)×D}`, SVD with gap-based rank threshold → `W_eff ∈ ℝ^{r×D}`.
+- Stack per-sample Jacobians `J_i ∈ ℝ^{K×D}` into `B ∈ ℝ^{(n·K)×D}`.
+- SVD with gap-based rank threshold → `W_eff ∈ ℝ^{r×D}` (effective rank `r`).
 
-**Encode / Decode:**
+**SV-weighted λ allocation** (Lagrange optimum for `min Σ s_i² λ_i` s.t. `Σ 1/√λ_i = C`):
 ```
-x     = (z − μ) @ U ⊙ (1/√λ)
-[add noise in x-space]
-z_dec = (x_noisy ⊙ √λ) @ U.T + μ
+1/√λ_i ∝ s_i^{2/3}   (row space, i = 1…r)
+1/√λ_i = 1/√λ_N      (null space, i = r+1…d,  λ_N = 1000)
+```
+
+**ANR** (Anisotropic Noise Reshaping) rotates the representation space by the Jacobian row space of the downstream task model so that task-sensitive directions receive proportionally less noise.
+
+```
+Pre-process  (Encode):  \bar{z}     =  clip( (z − μ) @ U ⊙ (1/√λ) )
+         [add noise in \bar{Z}-space]
+Post-process (Decode):  z_dec = (\bar{z}_noisy ⊙ √λ) @ U.T + μ
 ```
 
 ---
@@ -189,10 +193,10 @@ python train_resnet20.py --weights path/to/resnet20.pth
 
 # Train MLP heads (optional)
 python train_resnet20.py --mlp --activation relu
+python train_resnet20.py --mlp --activation gelu
 python train_resnet20.py --mlp --activation tanh
 python train_resnet20.py --mlp --activation sigmoid
 python train_resnet20.py --mlp --activation leaky_relu
-python train_resnet20.py --mlp --activation gelu
 
 # 2. Run LDP evaluation (main registry)
 python eval_cifar_classification.py
@@ -232,8 +236,8 @@ python eval_cifar_classification.py --ablation > results_ablation.txt 2>&1
 ---
 
 ## References
-
-- **PA (ANR-CW)**: Muthukrishnan, G., & Kalyani, S. (2025). Differential Privacy With Higher Utility by Exploiting Coordinate-Wise Disparity. *IEEE TIFS*.
+- **PA**: Ha, Y., Schlegel, V., Sun, Y., & Bharath, A. A. (2026). Jacobian-Guided Anisotropic Noise Reshaping for Utility Enhancement Under Local Differential Privacy. *arXiv*.
+- **CW**: Muthukrishnan, G., & Kalyani, S. (2025). Differential Privacy With Higher Utility by Exploiting Coordinate-Wise Disparity. *IEEE TIFS*.
 - **PLAN**: Aumüller, M., Lebeda, C. J., Nelson, B., & Pagh, R. (2024). PLAN: Variance-Aware Private Mean Estimation. *PETs*.
 - **PrivUnitG**: Asi, H., Feldman, V., & Talwar, K. (2022). Optimal Algorithms for Mean Estimation under Local Differential Privacy. *ICML*.
 - **Inst-Opt**: Huang, Z., Liang, Y., & Yi, K. (2021). Instance-optimal Mean Estimation Under Differential Privacy. *NeurIPS*.

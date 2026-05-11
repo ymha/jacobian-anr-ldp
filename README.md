@@ -17,7 +17,7 @@ y.ha25@imperial.ac.uk | ymha@etri.re.kr
 ```
 .
 ├── mechanisms/
-│   └── mechanisms.py                        # All LDP mechanism implementations (shared)
+│   └── mechanisms.py                          # All LDP mechanism implementations (shared)
 ├── cifar10-resnet20-classification-accuracy/  # Task 1: CIFAR-10 classification
 ├── mnist-vae-mlp-classification-accuracy/     # Task 2: MNIST classification
 └── user-level-linear-regression-accuracy/     # Task 3: User-level linear regression
@@ -33,7 +33,7 @@ y.ha25@imperial.ac.uk | ymha@etri.re.kr
 
 Applies LDP to 64-dim penultimate-layer features of a ResNet-20 trained on CIFAR-10, then classifies the decoded vector. Accuracy is averaged over all 10,000 test samples.
 
-- Classifier types: linear FC head or MLP (relu / sigmoid / tanh / leaky_relu / gelu)
+- Classifier types: linear FC head or MLP (relu / gelu / sigmoid / tanh / leaky_relu)
 - Evaluation grid: ε ∈ {0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 7.5, 10}
 - Supports ablation study and distribution-shift evaluation (CIFAR-10-C)
 - See [`cifar10-resnet20-classification-accuracy/README.md`](cifar10-resnet20-classification-accuracy/README.md)
@@ -77,23 +77,27 @@ All mechanisms satisfy ε-LDP (pure) or (ε, δ)-LDP with δ = 1e-5. Clipping ra
 | `PLAN(Pub)` | (ε,δ)-LDP | Variance-aware scaling + Gaussian |
 | `PLAN(Paper)` | (ε,δ)-LDP | PLAN Algorithm 1 (Aumüller et al. 2024) |
 | `Inst-Opt` | (ε,δ)-LDP | Hadamard rotation + median shift + optimal L2 clip |
-| `Task-Aware` | ε-LDP | Cholesky whitening + water-filling (linear classifiers only) |
+| `Task-Aware` | ε-LDP | Cholesky whitening + water-filling (linear downstream models only) |
 | `*+PA` | same | Any mechanism above with PA anisotropic pre/post-processing |
 
 ### PA Transform
 
-**PA** (ANR: Anisotropic Noise Reshaping) exploits the Jacobian row space of the downstream task model to identify task-sensitive directions and allocate noise anisotropically:
+**Row-space extraction** (`compute_jacobian_row_space`):
+- Stack per-sample Jacobians `J_i ∈ ℝ^{K×D}` into `B ∈ ℝ^{(n·K)×D}`.
+- SVD with gap-based rank threshold → `W_eff ∈ ℝ^{r×D}` (effective rank `r`).
 
-```
-Encode:  x     = (z − μ) @ U ⊙ (1/√λ)   # scale into row space
-         [add noise in x-space]
-Decode:  z_dec = (x_noisy ⊙ √λ) @ U.T + μ
-```
-
-SV-weighted λ allocation (Lagrange optimum for min Σ s_i²·λ_i s.t. Σ 1/√λ_i = C):
+**SV-weighted λ allocation** (Lagrange optimum for `min Σ s_i² λ_i` s.t. `Σ 1/√λ_i = C`):
 ```
 1/√λ_i ∝ s_i^{2/3}   (row space, i = 1…r)
 1/√λ_i = 1/√λ_N      (null space, i = r+1…d,  λ_N = 1000)
+```
+
+**ANR** (Anisotropic Noise Reshaping) rotates the representation space by the Jacobian row space of the downstream task model so that task-sensitive directions receive proportionally less noise.
+
+```
+Pre-process  (Encode):  \bar{z}     =  clip( (z − μ) @ U ⊙ (1/√λ) )
+         [add noise in \bar{Z}-space]
+Post-process (Decode):  z_dec = (\bar{z}_noisy ⊙ √λ) @ U.T + μ
 ```
 
 ---
@@ -132,8 +136,8 @@ python eval_regression.py --window 16 --target energy_mean
 ---
 
 ## References
-
-- **PA / ANR-CW**: Muthukrishnan, G., & Kalyani, S. (2025). Differential Privacy With Higher Utility by Exploiting Coordinate-Wise Disparity. *IEEE TIFS*.
+- **PA**: Ha, Y., Schlegel, V., Sun, Y., & Bharath, A. A. (2026). Jacobian-Guided Anisotropic Noise Reshaping for Utility Enhancement Under Local Differential Privacy. *arXiv*.
+- **CW**: Muthukrishnan, G., & Kalyani, S. (2025). Differential Privacy With Higher Utility by Exploiting Coordinate-Wise Disparity. *IEEE TIFS*.
 - **PLAN**: Aumüller, M., Lebeda, C. J., Nelson, B., & Pagh, R. (2024). PLAN: Variance-Aware Private Mean Estimation. *PETs*.
 - **PrivUnitG**: Asi, H., Feldman, V., & Talwar, K. (2022). Optimal Algorithms for Mean Estimation under Local Differential Privacy. *ICML*.
 - **Inst-Opt**: Huang, Z., Liang, Y., & Yi, K. (2021). Instance-optimal Mean Estimation Under Differential Privacy. *NeurIPS*.
