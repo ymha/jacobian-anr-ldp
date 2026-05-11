@@ -48,9 +48,9 @@ def _predict(clf, z: np.ndarray, device: str) -> int:
     return F.softmax(clf(torch.from_numpy(z).float().to(device)), dim=-1).argmax(1).cpu().item()
 
 
-def group_accuracy(clf, mech, Z_te: torch.Tensor, y_te: np.ndarray,
-                   client_ids: np.ndarray, client_seeds: np.ndarray,
-                   eps: float, device: str) -> float:
+def sample_accuracy(clf, mech, Z_te: torch.Tensor, y_te: np.ndarray,
+                    client_ids: np.ndarray, client_seeds: np.ndarray,
+                    eps: float, device: str) -> float:
     Z_np = Z_te.numpy()
     correct, total = 0, 0
     for client_id, seed in zip(client_ids, client_seeds):
@@ -82,8 +82,8 @@ def evaluate(clf, mechs: dict, Z_te: torch.Tensor, y_te: np.ndarray,
             client_ids   = client_data[s:s + 1]
             client_seeds = rng.integers(0, 2**31, size=1)
             for name, mech in mechs.items():
-                m = group_accuracy(clf, mech, Z_te, y_te, client_ids, client_seeds,
-                                   eps, device)
+                m = sample_accuracy(clf, mech, Z_te, y_te, client_ids, client_seeds,
+                                    eps, device)
                 if not np.isnan(m):
                     sums[name].append(m)
 
