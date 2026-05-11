@@ -112,7 +112,7 @@ Clipping radii `ρ` are set to the 90th percentile of the corresponding norm ove
 
 ### ANR-SV Transform
 
-**ANR** (Anisotropic Noise Randomization) rotates the latent space by the Jacobian row space of the downstream classifier so that task-sensitive directions receive proportionally less noise.
+**ANR** (Anisotropic Noise Reshaping) rotates the latent space by the Jacobian row space of the downstream classifier so that task-sensitive directions receive proportionally less noise.
 
 **Row-space extraction** (`compute_jacobian_row_space`):
 - Stack per-sample Jacobians `J_i ∈ ℝ^{K×D}` into `B ∈ ℝ^{(n·K)×D}`.
