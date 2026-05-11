@@ -13,7 +13,7 @@ The experiment proceeds in two stages:
 
 Two classifier types are supported via `--mlp` / `--activation`:
 - **Linear FC** (default): ℝ^64 → ℝ^10, Jacobian row space rank ≤ 10 (constant across inputs).
-- **MLP**: 64 → 10 → Act → Dropout(0.3) → 32 → Act → Dropout(0.3) → 10, where Act ∈ {relu, sigmoid, tanh, leaky_relu}. Jacobian is aggregated over 500 training samples.
+- **MLP**: 64 → 10 → Act → Dropout(0.3) → 32 → Act → Dropout(0.3) → 10, where Act ∈ {relu, sigmoid, tanh, leaky_relu, gelu}. Jacobian is aggregated over 500 training samples.
 
 ---
 
@@ -75,7 +75,7 @@ For each test sample `i`:
 | Layer 1 | Linear 64 → 10 |
 | Layer 2 | Linear 10 → 32 |
 | Layer 3 | Linear 32 → 10 (logits) |
-| Activation | relu / sigmoid / tanh / leaky_relu (after layers 1 and 2) |
+| Activation | relu / sigmoid / tanh / leaky_relu / gelu (after layers 1 and 2) |
 | Dropout | 0.3 after each activation |
 
 > `Task-Aware` is automatically removed from the mechanism set when `--mlp` is used.
@@ -192,6 +192,7 @@ python train_resnet20.py --mlp --activation relu
 python train_resnet20.py --mlp --activation tanh
 python train_resnet20.py --mlp --activation sigmoid
 python train_resnet20.py --mlp --activation leaky_relu
+python train_resnet20.py --mlp --activation gelu
 
 # 2. Run LDP evaluation (main registry)
 python eval_cifar_classification.py

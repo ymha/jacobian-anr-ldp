@@ -25,7 +25,7 @@ Benchmark suite for Local Differential Privacy (LDP) mechanisms across downstrea
 
 Applies LDP to 64-dim penultimate-layer features of a ResNet-20 trained on CIFAR-10, then classifies the decoded vector. Accuracy is averaged over all 10,000 test samples.
 
-- Classifier types: linear FC head or MLP (relu / sigmoid / tanh / leaky_relu)
+- Classifier types: linear FC head or MLP (relu / sigmoid / tanh / leaky_relu / gelu)
 - Evaluation grid: ε ∈ {0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 7.5, 10}
 - Supports ablation study and distribution-shift evaluation (CIFAR-10-C)
 - See [`cifar10-resnet20-classification-accuracy/README.md`](cifar10-resnet20-classification-accuracy/README.md)

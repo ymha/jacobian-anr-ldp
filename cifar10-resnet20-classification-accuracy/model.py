@@ -79,6 +79,7 @@ ACTIVATIONS = {
     "sigmoid":    nn.Sigmoid,
     "tanh":       nn.Tanh,
     "leaky_relu": nn.LeakyReLU,
+    "gelu":       nn.GELU,
 }
 
 
