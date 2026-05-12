@@ -1,14 +1,19 @@
-# ldp-evaluation
+# Jacobian-Guided Anisotropic Noise Reshaping for Utility Enhancement Under Local Differential Privacy
 
-Benchmark suite for Local Differential Privacy (LDP) mechanisms across downstream machine learning tasks. Evaluates pure ε-LDP and (ε,δ)-LDP mechanisms with and without the **PA** (Pre/Post-processing Adaptive) transform — an anisotropic noise shaping technique that rotates the latent space so that task-sensitive directions receive proportionally less noise.
+This repository contains the official experimental code for the paper:
+
+## Author
+> **Jacobian-Guided Anisotropic Noise Reshaping for Utility Enhancement Under Local Differential Privacy**
+> *Youngmok Ha*, *Viktor Schlegel*, *Yidan Sun*, and *Anil Anthony Bharath*
+> 📧 y.ha25@imperial.ac.uk
 
 ---
 
-## Author
+## Overview
 
-Youngmok Ha  
-Imperial College London
-y.ha25@imperial.ac.uk
+Standard Local Differential Privacy (LDP) mechanisms inject isotropic noise uniformly across all feature directions, which often degrades utility on downstream tasks unnecessarily.
+
+The proposed approach (PA) introduces an *anisotropic noise shaping* methodology that utilizes the Jacobian of the downstream task to rotate and scale the noise distribution — ensuring that task-sensitive directions receive proportionally less noise, while task-insensitive directions absorb more. This preserves the privacy guarantee (ε-LDP) while improving downstream utility.
 
 ---
 
