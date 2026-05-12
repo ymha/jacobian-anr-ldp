@@ -7,8 +7,8 @@ Benchmark suite for Local Differential Privacy (LDP) mechanisms across downstrea
 ## Author
 
 Youngmok Ha  
-Imperial College London & Electronics and Telecommunications Research Institute (ETRI)  
-y.ha25@imperial.ac.uk | ymha@etri.re.kr
+Imperial College London
+y.ha25@imperial.ac.uk
 
 ---
 
