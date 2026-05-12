@@ -3,8 +3,15 @@
 This repository contains the official experimental code for the paper:
 
 > **Jacobian-Guided Anisotropic Noise Reshaping for Utility Enhancement Under Local Differential Privacy**
-> *Youngmok Ha*, *Viktor Schlegel*, *Yidan Sun*, and *Anil Anthony Bharath*
-> 📧 y.ha25@imperial.ac.uk
+>
+> Youngmok Ha¹, Viktor Schlegel², Yidan Sun², and Anil Anthony Bharath¹²
+>
+> ¹ Imperial College London
+> ² Imperial College London, Imperial Global Singapore
+>
+> Contact: y.ha25@imperial.ac.uk
+
+Y. Ha conducted this research at Imperial College London while on leave from the Electronics and Telecommunications Research Institute (ETRI), Daejeon, Republic of Korea.
 
 ---
 
