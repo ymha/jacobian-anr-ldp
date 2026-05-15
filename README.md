@@ -1,8 +1,8 @@
-# Jacobian-Guided Anisotropic Noise Reshaping for Utility Enhancement Under Local Differential Privacy
+# Jacobian-Guided Anisotropic Noise Reshaping for Enhancing Representation Utility under Local Differential Privacy
 
 This repository contains the official experimental code for the paper:
 
-> **Jacobian-Guided Anisotropic Noise Reshaping for Utility Enhancement Under Local Differential Privacy**
+> **Jacobian-Guided Anisotropic Noise Reshaping for Enhancing Representation Utility under Local Differential Privacy**
 >
 > Youngmok Ha¹, Viktor Schlegel², Yidan Sun², and Anil Anthony Bharath¹²
 >
