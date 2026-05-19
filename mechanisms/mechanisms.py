@@ -12,21 +12,10 @@ DELTA      = 1e-5
 
 
 def _project_l1(z: np.ndarray, rho: float) -> np.ndarray:
-    """Project each row of z onto the L1 ball of radius ρ (Duchi et al. 2008)."""
-    abs_z = np.abs(z)
-    norms = abs_z.sum(axis=1)
-    out   = z.copy()
-    need  = norms > rho
-    if not need.any():
-        return out
-    v    = abs_z[need]
-    u    = np.sort(v, axis=1)[:, ::-1]
-    cssv = np.cumsum(u, axis=1)
-    rng  = np.arange(1, z.shape[1] + 1)
-    K    = (u > (cssv - rho) / rng).sum(axis=1) - 1
-    theta = (cssv[np.arange(len(K)), K] - rho) / (K + 1)
-    out[need] = np.sign(z[need]) * np.maximum(v - theta[:, None], 0)
-    return out
+    """Clip each row of z to L1 ball of radius ρ via scalar scaling."""
+    norms = np.abs(z).sum(axis=1, keepdims=True)
+    scale = np.minimum(1.0, rho / np.maximum(norms, 1e-10))
+    return z * scale
 
 
 # ── Gaussian noise calibration ────────────────────────────────────────────────
